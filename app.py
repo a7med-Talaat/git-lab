@@ -3,3 +3,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+def calculate_square(num):
+    return num * num
