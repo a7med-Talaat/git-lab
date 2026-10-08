@@ -4,7 +4,7 @@ def calculate_square(num):
     return num * num
 
 def greet(name="User"):
-    return f"Hey there, {name}! Welcome to Git Lab 2026."
+    return f"Greetings, {name}! Welcome to Git Lab 2026 Pro."
 
 def main():
     name = sys.argv[1] if len(sys.argv) > 1 else "Developer"
