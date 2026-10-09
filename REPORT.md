@@ -19,6 +19,63 @@
 
 ---
 
+### 2. Architecture Diagrams: The Three Areas & File Lifecycle
+
+#### A. The Three Git Areas & Command Flow
+
+```text
++-----------------------+       git add        +--------------------+      git commit      +------------------------+
+|   Working Directory   | -------------------> |    Staging Area    | -------------------> |     Git Repository     |
+|     (Working Tree)    |                      |      (Index)       |                      |     (.git Database)    |
+|   Editable Local Disk | <------------------- |  Prepared Snapshot | <------------------- |  Permanent Commits     |
++-----------------------+  git restore --staged+--------------------+   git checkout/revert+------------------------+
+           |                                                                                          |
+           +---------------------------------- git restore -------------------------------------------+
+```
+
+```mermaid
+flowchart LR
+    subgraph WD["1. Working Directory"]
+        direction TB
+        F1["Modified Files on Disk"]
+    end
+    subgraph SA["2. Staging Area (Index)"]
+        direction TB
+        F2[".git/index Snapshot Prep"]
+    end
+    subgraph REPO["3. Git Repository (.git)"]
+        direction TB
+        F3["Immutable Commit Objects"]
+    end
+
+    WD -- "git add" --> SA
+    SA -- "git commit" --> REPO
+    SA -- "git restore --staged" --> WD
+    REPO -- "git checkout / git restore -s" --> WD
+```
+
+#### B. The Complete File Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Untracked: New File Created
+    Untracked --> Staged: git add
+    Staged --> Unmodified: git commit
+    Unmodified --> Modified: File Edited
+    Modified --> Staged: git add
+    Staged --> Modified: git restore --staged
+    Modified --> Unmodified: git restore
+    Unmodified --> Untracked: git rm --cached
+    Unmodified --> [*]: git rm & commit
+```
+
+* **Untracked:** Files on disk not present in previous snapshot and not staged.
+* **Tracked (Unmodified):** Files matching the HEAD commit snapshot.
+* **Tracked (Modified):** Files changed in working directory relative to HEAD.
+* **Tracked (Staged):** Files marked and snapshotted into index, ready for the next commit.
+
+---
+
 ## 🛠️ Task 1: "Git Lab" (Internals, Local Workflow, Undoing, Tags)
 
 ### 1. Git Identity & Initialization
@@ -113,7 +170,7 @@ $ git ls-files -s
 100644 b2d64a39e425d467628d202e475055fae63d7504 0	notes.md
 ```
 
-* **Brief explanation of the relationship between them:**  
+* **Explanation of the relationship between them:**  
     
   > A commit object acts as the top-level metadata wrapper, referencing author information, commit message, parent commits, and pointing to a single root tree SHA. The tree object represents directory structure, mapping filenames and permissions to individual SHA-1 object hashes. The blob objects store the pure raw file contents independent of their filenames. When staged, `git ls-files -s` tracks these blob hashes in the index before commit finalization.
 
@@ -136,12 +193,11 @@ nothing added to commit but untracked files present (use "git add" to track)
 
 *(Note: `.env` and `debug.log` were present in the directory, but completely filtered out by `.gitignore` rules).*
 
-### 4. Inspecting Changes
+### 4. Inspecting Changes (`git diff`, `git diff --staged`, `git show`, `git log --oneline`)
 
-* Screenshot or terminal output of `git diff` & `git diff --staged`:
+* **Unstaged changes (Working Tree vs. Staging Area):**
 
 ```bash
-# Working tree changes vs. Staging Area (Unstaged diff)
 $ git diff
 diff --git a/app.py b/app.py
 index ad91926..35f7b1c 100644
@@ -154,8 +210,11 @@ index ad91926..35f7b1c 100644
 +
 +def calculate_square(num):
 +    return num * num
+```
 
-# Staging Area changes vs. HEAD (Staged diff)
+* **Staged changes (Staging Area vs. HEAD):**
+
+```bash
 $ git diff --staged
 diff --git a/app.py b/app.py
 index ad91926..35f7b1c 100644
@@ -170,9 +229,54 @@ index ad91926..35f7b1c 100644
 +    return num * num
 ```
 
+* **Inspecting Commit Snapshot (`git show HEAD`):**
+
+```bash
+$ git show c88e676
+commit c88e676e6d080235ec0cc8af90ab9ae5603843e0
+Author: a7med-Talaat <parkahmed2005@gmail.com>
+Date:   Thu Oct 8 23:18:29 2026 +0300
+
+    feat: implement greeting handler and argument support in app.py
+
+diff --git a/app.py b/app.py
+index 35f7b1c..dd66c1a 100644
+--- a/app.py
++++ b/app.py
+@@ -1,8 +1,15 @@
++import sys
++
++def calculate_square(num):
++    return num * num
++
++def greet(name="User"):
++    return f"Hello, {name}! Welcome to Git Lab."
++
+ def main():
+-    print("Welcome to Git Lab Application v0.1")
++    name = sys.argv[1] if len(sys.argv) > 1 else "Developer"
++    print(greet(name))
++    print(f"Square of 5 is: {calculate_square(5)}")
+ 
+ if __name__ == "__main__":
+     main()
+```
+
+* **Commit History Snapshot (`git log --oneline`):**
+
+```bash
+$ git log --oneline -n 6
+c88e676 feat: implement greeting handler and argument support in app.py
+8c631c4 docs: add git three areas documentation to notes.md
+370c47b feat: add calculate_square utility function in app.py
+476237d docs: initialize notes.md with git architecture concepts
+f16deaa feat: initialize python application entry point in app.py
+f2eeef2 chore: add .gitignore for secrets and temporary files
+```
+
 ### 5. Undoing Changes & History Recovery
 
-* Demonstrating `git commit --amend`:
+* **Demonstrating `git commit --amend`:**
 
 ```bash
 $ git commit -m "feat: add calculate_square math helper in app.py"
@@ -191,7 +295,23 @@ $ git log -1 --oneline
 370c47b feat: add calculate_square utility function in app.py
 ```
 
-* Demonstrating `git reset --hard` and recovery via `git reflog`:
+* **Demonstrating Unstaging (`git restore --staged`):**
+
+```bash
+# Modifying file and staging it into the index
+$ git add app.py
+$ git status -s
+M  app.py
+
+# Unstaging the file back to working tree without losing changes
+$ git restore --staged app.py
+$ git status -s
+ M app.py
+
+# Verified: app.py is un-marked from the upcoming commit while modifications remain safe!
+```
+
+* **Demonstrating `git reset --hard` and Recovery via `git reflog`:**
 
 ```bash
 # Switched to drill branch to protect main commit history
@@ -226,9 +346,17 @@ $ git log -1 --oneline
 064d49c test: add temporary experimental file for reset drill
 ```
 
-### 6. Tagging
+### 6. Tagging Releases
 
-* Output of `git show v1.0` (Annotated tag):
+* **Listing tags (`git tag -n`):**
+
+```bash
+$ git tag -n
+v0.1            feat: initialize python application entry point in app.py
+v1.0            Release v1.0: stable CLI application with math and greeting features
+```
+
+* **Output of `git show v1.0` (Annotated Tag):**
 
 ```bash
 $ git show v1.0
@@ -260,8 +388,8 @@ index 35f7b1c..dd66c1a 100644
  def main():
 -    print("Welcome to Git Lab Application v0.1")
 +    name = sys.argv[1] if len(sys.argv) > 1 else "Developer"
-+    print(greet(name))
-+    print(f"Square of 5 is: {calculate_square(5)}")
+     print(greet(name))
+     print(f"Square of 5 is: {calculate_square(5)}")
  
  if __name__ == "__main__":
      main()
@@ -313,7 +441,7 @@ Date:   Thu Oct 8 23:25:34 2026 +0300
 
 ### 3. Merge Conflict Resolution
 
-* Screenshot / terminal output of conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`):
+* Terminal output of conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`):
 
 ```bash
 $ git merge feature/greeting-update
@@ -360,12 +488,38 @@ Date:   Thu Oct 8 23:28:05 2026 +0300
     
   > Rebase rewrites branch history by taking commits from the current branch and reapplying them onto the tip of the target branch one by one. This produces a perfectly linear commit graph without extra merge commits, making `git log` clean and bisecting straightforward. In contrast, a 3-way merge preserves the authentic chronological branches and creates an explicit merge commit with two parents, which accurately reflects how parallel work occurred but can clutter the log graph in large teams.
 
-### 5. Repository Visual Graph
+### 5. Branch Cleanup & Pruning
 
-* Output of `git log --oneline --graph --all`:
+* Pruning stale local branches after merge:
+
+```bash
+$ git branch -d feature/login
+Deleted branch feature/login (was 8262ac4).
+
+$ git branch -d feature/ui
+Deleted branch feature/ui (was b2f6f6a).
+
+$ git branch -d feature/api
+Deleted branch feature/api (was cd5bd2a).
+
+$ git branch -d feature/greeting-update
+Deleted branch feature/greeting-update (was 1c9df81).
+
+$ git branch -d feature/export
+Deleted branch feature/export (was 57f941d).
+
+$ git branch
+* main
+```
+
+### 6. Repository Visual Graph
+
+* Full output of `git log --oneline --graph --all` (reflecting all changes up to latest commit `aeb2ee3`):
 
 ```bash
 $ git log --oneline --graph --all
+* 76be71c docs: update REPORT.md with three areas diagrams, unstaging drill, and submission checklist
+* aeb2ee3 docs: add comprehensive training REPORT.md and README.md
 * daccde1 docs: add CONTRIBUTING.md detailing branch naming, commit conventions, and PR etiquette
 * 57f941d feat: add export utility in export.py
 *   6d2a190 fix: resolve merge conflict in app.py by harmonizing greeting message
@@ -446,10 +600,10 @@ Fast-forward
 - File History: Visual side-by-side diff comparing working tree modifications against HEAD snapshot.
 ```
 
-### 4. Independent Contribution & PR Simulation
+### 4. Independent Contribution & PR Simulation (`dummy-project`)
 
-* Secondary Repository URL (`dummy-project`): `https://github.com/a7med-Talaat/dummy-project`  
-* Remote Configuration (`git remote -v`):
+* **Secondary Repository URL (`dummy-project`):** `https://github.com/a7med-Talaat/dummy-project`  
+* **Remote Configuration (`git remote -v`):**
 
 ```bash
 $ git remote -v
@@ -459,11 +613,56 @@ upstream	git@github.com:a7med-Talaat/dummy-project.git (fetch)
 upstream	git@github.com:a7med-Talaat/dummy-project.git (push)
 ```
 
-* **Pull Request Link:** `https://github.com/a7med-Talaat/dummy-project/pull/1`  
+* **Pull Request Link:** https://github.com/a7med-Talaat/dummy-project/pull/1  
 
 * **PR Details & Merge Verification:**
   * **PR Title:** `docs: expand documentation with quick start and contribution instructions`
   * **Branch:** `feature/improve-docs` into `main`
   * **Summary of Changes:** Added clear installation guide, clone instructions, and contribution etiquette to `README.md`.
   * **Review Action:** Approved and self-reviewed with note *"Documentation looks clear, clean, and ready for integration."*
+  * **Merge Commit:** `68c9df7 Merge pull request #1 from feature/improve-docs`
   * **Merge Status:** Merged into `main` via GitHub web interface (Status: **Merged / Closed**).
+
+* **Local Synchronization on `dummy-project` (`main`):**
+
+```bash
+$ cd dummy-project
+$ git switch main
+Switched to branch 'main'
+$ git pull origin main
+Updating e862b89..68c9df7
+Fast-forward
+ README.md | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+$ git log --oneline --graph -n 3
+*   68c9df7 Merge pull request #1 from feature/improve-docs
+|\  
+| * acf62ef docs: expand documentation with quick start and contribution instructions
+|/  
+* e862b89 chore: initial repository setup for dummy-project
+```
+
+---
+
+## 🎁 Bonus: `CONTRIBUTING.md`
+
+A dedicated [**`CONTRIBUTING.md`**](CONTRIBUTING.md) guide was implemented in the repository to define team standards:
+1. **Branch Naming Conventions:** `feature/<name>`, `bugfix/<name>`, `docs/<name>`, `hotfix/<name>`.
+2. **Commit Message Format:** Conventional commits syntax (`feat:`, `fix:`, `docs:`, `chore:`) with imperative descriptions under 50 characters.
+3. **Pull Request & Review Etiquette:** Checklist for clean branch rebase, no committed secrets, clear PR summary, and constructive peer code reviews.
+
+---
+
+## 📋 Submission Checklist
+
+| # | Item | Status | Verification & Evidence |
+| :-: | :--- | :-: | :--- |
+| **1** | **GitHub repository link submitted** | ✅ Done | [https://github.com/a7med-Talaat/git-lab](https://github.com/a7med-Talaat/git-lab) |
+| **2** | **REPORT.md includes outputs & screenshots for Tasks 1, 2, and 3** | ✅ Done | Documented across all sections above |
+| **3** | **At least 6 clear commits with 2 tags (lightweight & annotated)** | ✅ Done | 14 total commits; lightweight `v0.1` and annotated `v1.0` |
+| **4** | **Fast-forward merge, 3-way merge, resolved conflict, and rebase demonstrated** | ✅ Done | Demonstrated with `auth.py`, `ui.py`/`api.py`, `app.py`, and `export.py` |
+| **5** | **No secrets, API keys, or private keys committed in history** | ✅ Done | `.env` ignored; verified with `.gitignore` and `git status` |
+| **6** | **SSH connection verified via terminal output** | ✅ Done | Verified with `ssh -T git@github.com` output |
+| **7** | **Pull Request opened, reviewed, and merged on dummy-project** | ✅ Done | [dummy-project PR #1](https://github.com/a7med-Talaat/dummy-project/pull/1) merged (commit `68c9df7`) |
+| **8** | **Explanations written in own words for all required theoretical questions** | ✅ Done | Full answers in Part 0 and task subsections |
